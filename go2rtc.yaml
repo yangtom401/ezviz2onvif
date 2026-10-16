@@ -1,7 +1,3 @@
-# ====================================================
-# go2rtc default configuration for Ezviz ONVIF Gateway
-# ====================================================
-
 api:
   listen: ":1984"
 
@@ -14,5 +10,19 @@ webrtc:
 log:
   level: info
 
-# Streams will be dynamically generated and synced by ezviz_sync.py
-streams: {}
+streams:
+  # CH01: DS-2CD3T47WD-L (D43521312)
+  cam0:
+    - rtsp://10.0.0.185:8554/cam0
+  # CH02: 视频3@DS-7808NB-K1/C (C07585929)
+  cam1:
+    - rtsp://10.0.0.185:8554/cam1
+  # CH03: 视频4@DS-7808NB-K1/C (C07585929)
+  cam2:
+    - rtsp://10.0.0.185:8554/cam2
+  # CH04: 视频5@DS-7808NB-K1/C (C07585929)
+  cam3:
+    - rtsp://10.0.0.185:8554/cam3
+  # CH05: 老家摄像头 (BB8930323)
+  cam4:
+    - rtsp://10.0.0.185:8554/cam4
