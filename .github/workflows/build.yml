@@ -5,6 +5,10 @@ on:
     branches: [master, main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -46,3 +50,12 @@ jobs:
           name: ezviz2onvif
           path: dist/ezviz2onvif-linux-amd64.tar.gz
           retention-days: 7
+
+      - name: Create or Update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete v1.0.0 --yes || true
+          git tag -d v1.0.0 || true
+          git push --delete origin v1.0.0 || true
+          gh release create v1.0.0 dist/ezviz2onvif-linux-amd64.tar.gz --title "Ezviz ONVIF Gateway v1.0.0" --notes "Automated GitHub Actions build for Ezviz to ONVIF Gateway"
