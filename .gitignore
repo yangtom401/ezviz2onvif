@@ -1,0 +1,18 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Credentials and sensitive config
+.env
+ezviz.env
+token.json
+token.txt
+password.txt
+
+# Artifacts
+dist/
+artifact/
+*.zip
+*.tar.gz
+go2rtc

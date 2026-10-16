@@ -1,0 +1,18 @@
+# ====================================================
+# go2rtc default configuration for Ezviz ONVIF Gateway
+# ====================================================
+
+api:
+  listen: ":1984"
+
+rtsp:
+  listen: ":8554"
+
+webrtc:
+  listen: ":8555"
+
+log:
+  level: info
+
+# Streams will be dynamically generated and synced by ezviz_sync.py
+streams: {}

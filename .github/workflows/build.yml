@@ -1,0 +1,48 @@
+name: Build and Package Ezviz ONVIF Gateway
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Syntax and lint check
+        run: |
+          python3 -m py_compile ezviz_sync.py
+          echo "Python syntax check passed."
+
+      - name: Download go2rtc binary
+        run: |
+          curl -fsSL -o go2rtc https://github.com/AlexxIT/go2rtc/releases/latest/download/go2rtc_linux_amd64
+          chmod +x go2rtc
+          ./go2rtc -v || true
+
+      - name: Prepare release bundle
+        run: |
+          mkdir -p dist/ezviz2onvif
+          cp go2rtc dist/ezviz2onvif/
+          cp ezviz_sync.py dist/ezviz2onvif/
+          cp go2rtc.yaml dist/ezviz2onvif/
+          cp ezviz.env.example dist/ezviz2onvif/
+          cp install.sh dist/ezviz2onvif/
+          cp -r systemd dist/ezviz2onvif/
+          chmod +x dist/ezviz2onvif/install.sh dist/ezviz2onvif/go2rtc dist/ezviz2onvif/ezviz_sync.py
+          cd dist && tar czf ezviz2onvif-linux-amd64.tar.gz ezviz2onvif
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ezviz2onvif
+          path: dist/ezviz2onvif-linux-amd64.tar.gz
+          retention-days: 7

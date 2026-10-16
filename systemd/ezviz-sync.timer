@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic sync for Ezviz camera streams and token renewal
+After=network.target
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=4h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

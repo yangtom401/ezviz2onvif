@@ -1,0 +1,12 @@
+[Unit]
+Description=Ezviz Camera to ONVIF Stream Sync Daemon
+After=network.target go2rtc.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/ezviz2onvif
+EnvironmentFile=-/opt/ezviz2onvif/ezviz.env
+ExecStart=/usr/bin/python3 /opt/ezviz2onvif/ezviz_sync.py /opt/ezviz2onvif/ezviz.env
+StandardOutput=journal
+StandardError=journal

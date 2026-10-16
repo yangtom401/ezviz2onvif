@@ -1,0 +1,17 @@
+[Unit]
+Description=go2rtc ONVIF and RTSP Streaming Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ezviz2onvif
+ExecStart=/opt/ezviz2onvif/go2rtc -config /opt/ezviz2onvif/go2rtc.yaml
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
