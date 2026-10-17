@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>萤石云摄像头 · 5路全画面实时监控中心</title>
+    <link rel="icon" href="http://10.0.0.107:1984/favicon.ico">
+    <script type="module" src="./video-stream.js?v=20261016_5"></script>
+    <style>
+        :root {
+            --bg-body: #080b10;
+            --bg-card: #131720;
+            --border: #232a36;
+            --accent-green: #2ea043;
+            --accent-blue: #1f6feb;
+            --text-main: #f0f6fc;
+            --text-sub: #8b949e;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top Header */
+        header {
+            background-color: #030508;
+            border-bottom: 1px solid var(--border);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+            z-index: 10;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .dot-live {
+            width: 10px;
+            height: 10px;
+            background-color: #3fb950;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 10px #3fb950;
+            animation: pulse 1.8s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { opacity: 0.3; }
+        }
+
+        .title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .header-tools {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .btn-group {
+            display: inline-flex;
+            background: #1b212c;
+            border-radius: 6px;
+            padding: 2px;
+            border: 1px solid var(--border);
+        }
+
+        .btn {
+            background: none;
+            border: none;
+            color: var(--text-sub);
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 0.82rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn:hover {
+            color: var(--text-main);
+            background: rgba(255,255,255,0.06);
+        }
+
+        .btn.active {
+            background: var(--accent-blue);
+            color: #fff;
+            font-weight: 500;
+        }
+
+        /* Status Info Bar */
+        .info-bar {
+            background-color: #0d121c;
+            border-bottom: 1px solid var(--border);
+            padding: 6px 20px;
+            font-size: 0.78rem;
+            color: var(--text-sub);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .info-item strong {
+            color: #58a6ff;
+        }
+
+        /* Main Grid Area */
+        main {
+            flex: 1;
+            padding: 10px;
+            overflow: hidden;
+            display: flex;
+        }
+
+        .grid-container {
+            display: grid;
+            gap: 10px;
+            width: 100%;
+            height: 100%;
+            transition: all 0.25s ease-in-out;
+        }
+
+        /* Grid Layouts */
+        .layout-grid-6 {
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+        }
+
+        .layout-grid-4 {
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
+        }
+
+        .layout-single {
+            grid-template-columns: 1fr;
+            grid-template-rows: 1fr;
+        }
+
+        /* Camera Card */
+        .cam-box {
+            background-color: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+
+        .cam-box:hover {
+            border-color: #58a6ff;
+        }
+
+        .cam-box.hidden {
+            display: none;
+        }
+
+        .cam-header {
+            background: #181d27;
+            padding: 6px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            z-index: 2;
+        }
+
+        .cam-name {
+            font-size: 0.82rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .cam-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .tag-codec {
+            font-size: 0.68rem;
+            padding: 1px 5px;
+            border-radius: 3px;
+            background: #232a37;
+            color: #79c0ff;
+        }
+
+        .btn-mini {
+            background: none;
+            border: none;
+            color: var(--text-sub);
+            cursor: pointer;
+            padding: 2px 6px;
+            font-size: 0.75rem;
+            border-radius: 3px;
+        }
+
+        .btn-mini:hover {
+            color: #fff;
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* Player Wrapper */
+        .player-viewport {
+            flex: 1;
+            position: relative;
+            background: #000;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        video-stream {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+        }
+
+        video-stream video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .cam-overlay {
+            position: absolute;
+            bottom: 6px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            font-size: 0.72rem;
+            color: rgba(255,255,255,0.7);
+            text-shadow: 0 1px 3px #000;
+            z-index: 5;
+        }
+
+        /* Info Card Slot for 6th slot */
+        .info-slot {
+            background: linear-gradient(135deg, #131a26 0%, #0d121c 100%);
+            border: 1px dashed var(--border);
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 20px;
+            color: var(--text-sub);
+            font-size: 0.8rem;
+            line-height: 1.6;
+        }
+
+        .info-slot h4 {
+            color: #e6edf3;
+            margin-bottom: 8px;
+            font-size: 0.92rem;
+        }
+
+        .info-slot code {
+            color: #7ee787;
+            font-family: Consolas, monospace;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand">
+            <span class="dot-live"></span>
+            <div class="title">萤石云摄像头 · 5路全画面实时监控中心</div>
+        </div>
+
+        <div class="header-tools">
+            <!-- Streaming Mode Switcher -->
+            <div class="btn-group">
+                <button class="btn" id="modeBtnWebrtc" onclick="setMode('webrtc')">⚡ WebRTC 原生直出</button>
+                <button class="btn" id="modeBtnAuto" onclick="setMode('webrtc,mse')">⚡ 极速自适应</button>
+                <button class="btn active" id="modeBtnMse" onclick="setMode('mse')">🚀 MSE 连续流</button>
+            </div>
+
+            <!-- Grid Layout Switcher -->
+            <div class="btn-group">
+                <button class="btn active" id="layoutBtn6" onclick="setLayout('layout-grid-6')">3x2 全屏网格</button>
+                <button class="btn" id="layoutBtn4" onclick="setLayout('layout-grid-4')">2x2 四分屏</button>
+                <button class="btn" id="layoutBtn1" onclick="setLayout('layout-single')">1画面聚焦</button>
+            </div>
+
+            <button class="btn" style="background:#21262d; border:1px solid var(--border);" onclick="reloadAll()">🔄 重新拉流</button>
+            <a id="btnNativeMosaic" href="#" target="_blank" class="btn" style="background:#21262d; border:1px solid var(--border);">📺 原生全拼屏</a>
+            <a id="btnGo2rtcLink" href="#" target="_blank" class="btn" style="background:#21262d; border:1px solid var(--border);">⚙️ go2rtc</a>
+        </div>
+    </header>
+
+    <div class="info-bar">
+        <div class="info-item">📱 手机网关 IP: <strong>10.0.0.185:8554</strong> (已自动暴露 5 路摄像头)</div>
+        <div class="info-item">💻 流媒体转发核心: <strong id="hostDisplay">10.0.0.107:1984</strong></div>
+        <div class="info-item">📹 当前播放: <strong id="streamCountText">全部 5 路实时并发</strong></div>
+        <div class="info-item">📡 组播自动发现: <strong>239.255.255.250:3702</strong></div>
+    </div>
+
+    <main>
+        <div id="videoGrid" class="grid-container layout-grid-6">
+
+            <!-- Cam 0 -->
+            <div class="cam-box" id="box-cam0">
+                <div class="cam-header">
+                    <span class="cam-name"><span class="dot-live"></span>CH01 · DS-2CD3T47WD-L</span>
+                    <div class="cam-meta">
+                        <span class="tag-codec">400万超清</span>
+                        <button class="btn-mini" onclick="maximize('cam0')">⛶ 聚焦</button>
+                    </div>
+                </div>
+                <div class="player-viewport">
+                    <video-stream id="stream-cam0" mode="mse" background="true" media="video"></video-stream>
+                    <div class="cam-overlay">
+                        <span>前院/车位</span>
+                        <span>rtsp://10.0.0.185:8554/cam0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cam 1 -->
+            <div class="cam-box" id="box-cam1">
+                <div class="cam-header">
+                    <span class="cam-name"><span class="dot-live"></span>CH02 · 视频3@DS-7808NB-K1/C</span>
+                    <div class="cam-meta">
+                        <span class="tag-codec">H.265</span>
+                        <button class="btn-mini" onclick="maximize('cam1')">⛶ 聚焦</button>
+                    </div>
+                </div>
+                <div class="player-viewport">
+                    <video-stream id="stream-cam1" mode="mse" background="true" media="video"></video-stream>
+                    <div class="cam-overlay">
+                        <span>通道3</span>
+                        <span>rtsp://10.0.0.185:8554/cam1</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cam 2 -->
+            <div class="cam-box" id="box-cam2">
+                <div class="cam-header">
+                    <span class="cam-name"><span class="dot-live"></span>CH03 · 视频4@DS-7808NB-K1/C</span>
+                    <div class="cam-meta">
+                        <span class="tag-codec">H.264</span>
+                        <button class="btn-mini" onclick="maximize('cam2')">⛶ 聚焦</button>
+                    </div>
+                </div>
+                <div class="player-viewport">
+                    <video-stream id="stream-cam2" mode="mse" background="true" media="video"></video-stream>
+                    <div class="cam-overlay">
+                        <span>通道4</span>
+                        <span>rtsp://10.0.0.185:8554/cam2</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cam 3 -->
+            <div class="cam-box" id="box-cam3">
+                <div class="cam-header">
+                    <span class="cam-name"><span class="dot-live"></span>CH04 · 视频5@DS-7808NB-K1/C</span>
+                    <div class="cam-meta">
+                        <span class="tag-codec">H.264</span>
+                        <button class="btn-mini" onclick="maximize('cam3')">⛶ 聚焦</button>
+                    </div>
+                </div>
+                <div class="player-viewport">
+                    <video-stream id="stream-cam3" mode="mse" background="true" media="video"></video-stream>
+                    <div class="cam-overlay">
+                        <span>通道5</span>
+                        <span>rtsp://10.0.0.185:8554/cam3</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cam 4 -->
+            <div class="cam-box" id="box-cam4">
+                <div class="cam-header">
+                    <span class="cam-name"><span class="dot-live"></span>CH05 · 老家摄像头</span>
+                    <div class="cam-meta">
+                        <span class="tag-codec">异地远程</span>
+                        <button class="btn-mini" onclick="maximize('cam4')">⛶ 聚焦</button>
+                    </div>
+                </div>
+                <div class="player-viewport">
+                    <video-stream id="stream-cam4" mode="mse" background="true" media="video"></video-stream>
+                    <div class="cam-overlay">
+                        <span>BB8930323:1</span>
+                        <span>rtsp://10.0.0.185:8554/cam4</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Slot 6: NVR / Guide Info -->
+            <div class="info-slot" id="slot6">
+                <h4>📌 录像机 (NVR/DVR) 接入状态</h4>
+                <p>● <strong>ONVIF 协议:</strong> 支持 WS-Discovery 自动搜索</p>
+                <p>● <strong>网关端口:</strong> ONVIF <code>8080</code> | RTSP <code>8554</code></p>
+                <p>● <strong>取流格式:</strong> H.264 / H.265 原画直出</p>
+                <p style="margin-top: 8px;">● <strong>提示:</strong> 支持点击任意通道右上角「⛶ 聚焦」放大单路，双击任意画面即可恢复全屏网格。</p>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        const currentHost = window.location.hostname || '127.0.0.1';
+        document.getElementById('hostDisplay').innerText = `${currentHost}:1984`;
+        document.getElementById('btnNativeMosaic').href = `http://${currentHost}:1984/stream.html?src=cam0&src=cam1&src=cam2&src=cam3&src=cam4`;
+        document.getElementById('btnGo2rtcLink').href = `http://${currentHost}:1984/`;
+
+        const cams = ['cam0', 'cam1', 'cam2', 'cam3', 'cam4'];
+        const urlParams = new URLSearchParams(window.location.search);
+        let currentMode = urlParams.get('mode') || 'mse';
+        let currentLayout = 'layout-grid-6';
+
+        function startStream(camId) {
+            const el = document.getElementById(`stream-${camId}`);
+            if (el) {
+                el.mode = currentMode;
+                el.setAttribute('mode', el.mode);
+                el.background = true;
+                el.media = 'video';
+                if (el.video) {
+                    el.video.muted = true;
+                }
+                el.src = new URL(`http://${currentHost}:1984/api/ws?src=${camId}`);
+            }
+        }
+
+        function loadAllStreams() {
+            cams.forEach((camId, idx) => {
+                setTimeout(() => {
+                    startStream(camId);
+                }, idx * 1200);
+            });
+        }
+
+        function reloadAll() {
+            cams.forEach(camId => {
+                const el = document.getElementById(`stream-${camId}`);
+                if (el) {
+                    if (el.ondisconnect) el.ondisconnect();
+                    el.src = '';
+                }
+            });
+            setTimeout(loadAllStreams, 500);
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.header-tools .btn-group:first-child .btn').forEach(b => b.classList.remove('active'));
+            if (mode === 'webrtc,mse') document.getElementById('modeBtnAuto').classList.add('active');
+            if (mode === 'webrtc') document.getElementById('modeBtnWebrtc').classList.add('active');
+            if (mode === 'mse') document.getElementById('modeBtnMse').classList.add('active');
+            reloadAll();
+        }
+
+        function setLayout(layoutClass) {
+            currentLayout = layoutClass;
+            const grid = document.getElementById('videoGrid');
+            grid.className = 'grid-container ' + layoutClass;
+
+            document.querySelectorAll('#layoutBtn6, #layoutBtn4, #layoutBtn1').forEach(b => b.classList.remove('active'));
+            if (layoutClass === 'layout-grid-6') document.getElementById('layoutBtn6').classList.add('active');
+            if (layoutClass === 'layout-grid-4') document.getElementById('layoutBtn4').classList.add('active');
+            if (layoutClass === 'layout-single') document.getElementById('layoutBtn1').classList.add('active');
+
+            // Manage slot visibility
+            const slot6 = document.getElementById('slot6');
+            if (layoutClass === 'layout-grid-4') {
+                slot6.style.display = 'none';
+                document.getElementById('box-cam4').style.display = 'none';
+            } else if (layoutClass === 'layout-single') {
+                slot6.style.display = 'none';
+            } else {
+                slot6.style.display = 'flex';
+                document.getElementById('box-cam4').style.display = 'flex';
+            }
+        }
+
+        function maximize(camId) {
+            setLayout('layout-single');
+            cams.forEach(id => {
+                const box = document.getElementById(`box-${id}`);
+                if (box) {
+                    box.style.display = (id === camId) ? 'flex' : 'none';
+                }
+            });
+            document.getElementById('slot6').style.display = 'none';
+        }
+
+        // Double click to restore grid
+        document.getElementById('videoGrid').addEventListener('dblclick', () => {
+            cams.forEach(id => {
+                const box = document.getElementById(`box-${id}`);
+                if (box) box.style.display = 'flex';
+            });
+            setLayout('layout-grid-6');
+        });
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            setTimeout(loadAllStreams, 200);
+        });
+    </script>
+</body>
+</html>

@@ -485,7 +485,8 @@ HTML_PAGE = """<!DOCTYPE html>
                     <span class="badge online" id="wallCountBadge">5 路画面</span>
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                    <button class="btn-sm green" onclick="playAllWall()">▶ 全部开启</button>
+                    <a href="/preview.html" target="_blank" style="text-decoration:none;"><button class="btn-sm green" style="font-weight:700; background:#238636; border:1px solid #3fb950;">📺 极速 5 路并发 MSE 监控大屏</button></a>
+                    <button class="btn-sm" onclick="playAllWall()">▶ 全部开启</button>
                     <button class="btn-sm red" onclick="stopAllWall()">⏸ 全部停止</button>
                     <button class="btn-sm" onclick="toggleFullScreenWall()">⛶ 网页全屏</button>
                 </div>
@@ -735,7 +736,9 @@ HTML_PAGE = """<!DOCTYPE html>
                 const streamName = `cam_${c.deviceSerial}_ch${c.channelNo || 1}`;
                 const st = (streamStatuses && streamStatuses[streamName]) || {};
                 let statusBadge = '<span class="badge" style="background:#4d3800; color:#e3b341; border:1px solid #9e6a03;">🟡 待配视频源</span>';
-                if (st.type === 'open') {
+                if (st.type === 'app') {
+                    statusBadge = '<span class="badge online" style="background:#133a20; color:#7ee787; border:1px solid #238636;">📱 官方 App 通道</span>';
+                } else if (st.type === 'open') {
                     statusBadge = '<span class="badge online">🟢 官方云直连</span>';
                 } else if (st.type === 'custom') {
                     statusBadge = '<span class="badge online" style="background:#0c2d6b; color:#58a6ff; border:1px solid #1f6feb;">🔵 内网直连</span>';
@@ -748,7 +751,7 @@ HTML_PAGE = """<!DOCTYPE html>
                         <span>${c.deviceName || c.deviceSerial} (通道 ${c.channelNo || 1})</span>
                         ${statusBadge}
                     </div>
-                    <iframe id="wall_frame_${streamName}" src="http://${host}:1984/stream.html?src=${streamName}&mode=webrtc" allowfullscreen></iframe>
+                    <iframe id="wall_frame_${streamName}" src="http://${host}:1984/stream.html?src=${streamName}&mode=mse,webrtc" allowfullscreen></iframe>
                 </div>
                 `;
             }).join('');
@@ -762,10 +765,16 @@ HTML_PAGE = """<!DOCTYPE html>
                 const customVal = (customStreams && customStreams[streamName]) || '';
                 
                 let streamSourceText = '🟡 占位回环 (等待官方 AppKey 激活或配置本地 RTSP)';
-                if (st.type === 'open') {
+                let cardBadge = '<span class="badge" style="background:#4d3800; color:#e3b341; border:1px solid #9e6a03;">待配视频源</span>';
+                if (st.type === 'app') {
+                    streamSourceText = '📱 官方手机 App 直连通道: ' + (st.url || 'rtsp://10.0.0.185:8554');
+                    cardBadge = '<span class="badge online" style="background:#133a20; color:#7ee787; border:1px solid #238636;">官方 App 通道</span>';
+                } else if (st.type === 'open') {
                     streamSourceText = '🟢 萤石云官方直连码流 (已生效)';
+                    cardBadge = '<span class="badge online">官方云直连</span>';
                 } else if (st.type === 'custom') {
                     streamSourceText = '🔵 自定义/本地 RTSP: ' + customVal;
+                    cardBadge = '<span class="badge online" style="background:#0c2d6b; color:#58a6ff; border:1px solid #1f6feb;">内网直连</span>';
                 }
 
                 return `
@@ -773,7 +782,7 @@ HTML_PAGE = """<!DOCTYPE html>
                     <div class="cam-name">
                         <span>${c.deviceName || c.deviceSerial}</span>
                         <div style="display:flex; gap:6px;">
-                            ${st.type === 'open' ? '<span class="badge online">官方云直连</span>' : (st.type === 'custom' ? '<span class="badge online" style="background:#0c2d6b; color:#58a6ff; border:1px solid #1f6feb;">内网直连</span>' : '<span class="badge" style="background:#4d3800; color:#e3b341; border:1px solid #9e6a03;">待配视频源</span>')}
+                            ${cardBadge}
                             <span class="badge ${isOnline ? 'online' : 'offline'}">${isOnline ? '在线' : '离线'}</span>
                         </div>
                     </div>
@@ -788,7 +797,7 @@ HTML_PAGE = """<!DOCTYPE html>
                     </div>
                     <div class="cam-actions">
                         <button class="btn-sm green" id="btn_card_${streamName}" onclick="toggleCardPlay('${streamName}')">▶ 预览本路</button>
-                        <a href="http://${host}:1984/stream.html?src=${streamName}" target="_blank" style="text-decoration:none;">
+                        <a href="http://${host}:1984/stream.html?src=${streamName}&mode=mse,webrtc" target="_blank" style="text-decoration:none;">
                             <button class="btn-sm">新窗口大图</button>
                         </a>
                         <button class="btn-sm" onclick="navigator.clipboard.writeText('${rtspUrl}'); alert('已复制 RTSP 播放地址: ${rtspUrl}');">📋 复制 RTSP</button>
@@ -838,7 +847,7 @@ HTML_PAGE = """<!DOCTYPE html>
             const host = window.location.hostname;
             document.querySelectorAll('[id^="wall_frame_"]').forEach(el => {
                 const sName = el.id.replace('wall_frame_', '');
-                el.src = `http://${host}:1984/stream.html?src=${sName}&mode=webrtc`;
+                el.src = `http://${host}:1984/stream.html?src=${sName}&mode=mse,webrtc`;
             });
         }
 
@@ -864,7 +873,7 @@ HTML_PAGE = """<!DOCTYPE html>
             const btn = document.getElementById('btn_card_' + streamName);
             if (box.style.display === 'none' || !box.style.display) {
                 box.style.display = 'block';
-                frame.src = `http://${host}:1984/stream.html?src=${streamName}&mode=webrtc`;
+                frame.src = `http://${host}:1984/stream.html?src=${streamName}&mode=mse,webrtc`;
                 btn.innerText = '⏸ 关闭预览';
                 btn.className = 'btn-sm red';
             } else {
@@ -960,6 +969,25 @@ class GatewayHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        clean_path = parsed.path.lstrip("/")
+        local_file = os.path.join(base_dir, clean_path)
+
+        if clean_path and os.path.isfile(local_file):
+            ctype = "text/plain"
+            if clean_path.endswith(".html"): ctype = "text/html; charset=utf-8"
+            elif clean_path.endswith(".js"): ctype = "application/javascript; charset=utf-8"
+            elif clean_path.endswith(".css"): ctype = "text/css; charset=utf-8"
+            elif clean_path.endswith(".ico"): ctype = "image/x-icon"
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", ctype)
+            with open(local_file, "rb") as f:
+                content = f.read()
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+            return
+
         if parsed.path == "/" or parsed.path == "/index.html":
             body = HTML_PAGE.encode("utf-8")
             self.send_response(HTTPStatus.OK)
@@ -1419,10 +1447,28 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 stream_url = custom_streams[clean_name]
                 source_type = "custom"
             # 2. Open Platform direct stream
-            elif active_token:
+            elif active_token and saved.get("auth_mode") == "open":
                 stream_url = get_open_live_url(active_token, serial, ch)
                 if stream_url:
                     source_type = "open"
+
+            # 3. 官方 App 通道 (10.0.0.185:8554 - 手机 App 网关)
+            if not stream_url:
+                app_gw = os.environ.get("APP_GATEWAY", "10.0.0.185:8554")
+                serial_map = {
+                    "D43521312_1": "cam0",
+                    "D43521312": "cam0",
+                    "C07585929_3": "cam1",
+                    "C07585929_4": "cam2",
+                    "C07585929_5": "cam3",
+                    "BB8930323_1": "cam4",
+                    "BB8930323": "cam4",
+                }
+                k = f"{serial}_{ch}"
+                cam_track = serial_map.get(k) or serial_map.get(serial)
+                if cam_track:
+                    stream_url = f"rtsp://{app_gw}/{cam_track}"
+                    source_type = "app"
 
             if stream_url:
                 lines.append(f'    - "{stream_url}"')
@@ -1432,6 +1478,13 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 "url": stream_url or "",
                 "type": source_type
             }
+
+        # 挂载 cam0..cam4 直通别名，适配 preview.html 与原生客户端
+        lines.append("  # 官方 App 通道直接别名")
+        app_gw = os.environ.get("APP_GATEWAY", "10.0.0.185:8554")
+        for i in range(5):
+            lines.append(f"  cam{i}:")
+            lines.append(f'    - "rtsp://{app_gw}/cam{i}"')
 
         saved["stream_statuses"] = statuses
         save_token_data(saved)
@@ -1449,6 +1502,14 @@ def main():
     args = parser.parse_args()
 
     server_address = ("", args.port)
+    saved = load_saved_token()
+    if saved and saved.get("devices"):
+        try:
+            logging.info("Initializing go2rtc streams with %d saved devices from App channel...", len(saved["devices"]))
+            GatewayHandler.update_go2rtc_streams(None, saved.get("devices"))
+        except Exception as e:
+            logging.warning("Startup update_go2rtc_streams failed: %s", e)
+
     httpd = ThreadingHTTPServer(server_address, GatewayHandler)
     logging.info("Ezviz Gateway Web Portal listening on port %d...", args.port)
     try:
