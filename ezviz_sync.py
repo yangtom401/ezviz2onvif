@@ -186,38 +186,44 @@ def find_urls(obj, scheme):
 
 
 def get_open_live_url(token, serial, channel, cfg):
-    attempts = [
-        {
-            "accessToken": token,
-            "deviceSerial": serial,
-            "channelNo": channel,
-            "protocol": cfg["PROTOCOL"],
-            "quality": cfg["QUALITY"],
-            "expireTime": 86400,
-        },
-        {
-            "accessToken": token,
-            "deviceSerial": serial,
-            "channelNo": channel,
-            "protocol": cfg["PROTOCOL"],
-            "quality": cfg["QUALITY"],
-        },
+    endpoints = [
+        f"{API_BASE_OPEN}/api/lapp/v2/live/address/get",
+        f"{API_BASE_OPEN}/api/lapp/live/address/get",
+        f"{API_BASE_OPEN}/api/lapp/v2/live/urls/get",
     ]
+    protocols = [4, 2, 3, "flv", "hls", "rtsp"]
     last_err = None
-    for params in attempts:
-        try:
-            r = http_post(f"{API_BASE_OPEN}/api/lapp/v2/live/urls/get", params)
-        except Exception as e:
-            last_err = f"HTTP error: {e}"
-            continue
-        if str(r.get("code")) != "200":
-            last_err = f"API error code={r.get('code')} msg={r.get('msg')}"
-            continue
-        urls = find_urls(r.get("data"), cfg["PROTOCOL"])
-        if urls:
-            return urls[0]
-        last_err = f"No {cfg['PROTOCOL']} url found in response: {r}"
+    for proto in protocols:
+        for ep in endpoints:
+            try:
+                r = http_post(ep, {
+                    "accessToken": token,
+                    "deviceSerial": str(serial).strip(),
+                    "channelNo": int(channel),
+                    "protocol": proto,
+                    "quality": 1,
+                    "type": 1,
+                    "expireTime": 62208000,
+                })
+            except Exception as e:
+                last_err = f"HTTP error: {e}"
+                continue
+            if str(r.get("code")) != "200":
+                last_err = f"API error code={r.get('code')} msg={r.get('msg')}"
+                continue
+            data = r.get("data")
+            if isinstance(data, dict):
+                if data.get("url"): return data["url"]
+                if data.get("liveAddress"): return data["liveAddress"]
+            elif isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+                if data[0].get("url"): return data[0]["url"]
+                if data[0].get("liveAddress"): return data[0]["liveAddress"]
+            urls = find_urls(data, "http") + find_urls(data, "https") + find_urls(data, "rtsp")
+            if urls:
+                return urls[0]
+            last_err = f"No url found in response: {r}"
     raise RuntimeError(last_err)
+
 
 
 # ==================== App 客户端接口逻辑 (备选通道) ====================

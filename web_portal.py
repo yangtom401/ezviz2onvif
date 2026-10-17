@@ -54,25 +54,49 @@ def find_urls(obj, scheme):
 
 
 def get_open_live_url(token, serial, channel):
-    for proto in ["rtsp", "rtmp", "flv"]:
-        try:
-            r = post_json_api(
-                f"{API_BASE_OPEN}/api/lapp/v2/live/urls/get",
-                {
+    endpoints = [
+        f"{API_BASE_OPEN}/api/lapp/v2/live/address/get",
+        f"{API_BASE_OPEN}/api/lapp/live/address/get",
+        f"{API_BASE_OPEN}/api/lapp/v2/live/urls/get",
+    ]
+    # 4: flv (HTTP-FLV low latency), 2: hls, 3: rtmp
+    protocols = [4, 2, 3, "flv", "hls", "rtsp", "rtmp"]
+    for proto in protocols:
+        for ep in endpoints:
+            try:
+                params = {
                     "accessToken": token,
-                    "deviceSerial": serial,
-                    "channelNo": channel,
+                    "deviceSerial": str(serial).strip(),
+                    "channelNo": int(channel),
                     "protocol": proto,
-                    "quality": "hd",
-                    "expireTime": 86400,
-                },
-            )
-            urls = find_urls(r.get("data"), proto)
-            if urls:
-                return urls[0]
-        except Exception as e:
-            logging.debug("get_open_live_url %s failed: %s", proto, e)
+                    "quality": 1,
+                    "type": 1,
+                    "expireTime": 62208000,
+                }
+                r = post_json_api(ep, params)
+                if str(r.get("code")) == "200":
+                    data = r.get("data")
+                    if isinstance(data, dict):
+                        if data.get("url"):
+                            logging.info("Found stream URL for %s ch%s: %s", serial, channel, data["url"][:60])
+                            return data["url"]
+                        if data.get("liveAddress"):
+                            logging.info("Found stream liveAddress for %s ch%s: %s", serial, channel, data["liveAddress"][:60])
+                            return data["liveAddress"]
+                    elif isinstance(data, list) and len(data) > 0:
+                        first = data[0]
+                        if isinstance(first, dict):
+                            if first.get("url"):
+                                return first["url"]
+                            if first.get("liveAddress"):
+                                return first["liveAddress"]
+                    urls = find_urls(data, "http") + find_urls(data, "https") + find_urls(data, "rtsp") + find_urls(data, "rtmp")
+                    if urls:
+                        return urls[0]
+            except Exception as e:
+                logging.debug("get_open_live_url ep=%s proto=%s failed: %s", ep, proto, e)
     return None
+
 
 
 DEFAULT_PROFILE = {
@@ -467,19 +491,24 @@ HTML_PAGE = """<!DOCTYPE html>
                 </div>
             </div>
             
-            <div id="openStreamActivationBox" style="background:#161f30; border:1px solid #1f3766; border-radius:6px; padding:12px 16px; margin-bottom:14px; font-size:0.85rem; line-height:1.5;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <span style="font-weight:600; color:#79c0ff;">⚡ 激活 7x24 高清直连视频源 (免验证码/无中继瓶颈)</span>
+            <div id="openStreamActivationBox" style="background:#132238; border:1px solid #1f6feb; border-radius:8px; padding:16px 20px; margin-bottom:16px; font-size:0.9rem; line-height:1.6;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <span style="font-weight:700; color:#58a6ff; font-size:1rem;">⚡ 为什么现在还没出画面？一键激活官方 7x24 高清码流</span>
                 </div>
-                <p style="color:var(--text-sub); margin-bottom:8px;">
-                    在您浏览器第 9 个标签页已打开的「萤石开放平台」控制台直接复制 <strong>AppKey</strong> 与 <strong>AppSecret</strong>，一键把 5 路摄像头的高清实时码流直接接入播放矩阵与 NVR！
+                <p style="color:#c9d1d9; margin-bottom:10px;">
+                    您已成功登录并同步了 <strong>5 路摄像头</strong>。萤石云官方机制要求：实时视频拉流需通过应用密钥（AppKey / Secret）向开放平台换取直连流，或配置局域网本地 RTSP。
                 </p>
-                <div id="activationInputs" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
-                    <input type="text" id="actAppKey" placeholder="输入开放平台 AppKey" style="min-width:200px;">
-                    <input type="password" id="actAppSecret" placeholder="输入开放平台 Secret" style="min-width:200px;">
-                    <button class="btn-sm green" onclick="activateOpenStreams()">🚀 立即激活全部高清码流</button>
+                <div style="background:#0b101b; padding:10px 14px; border-radius:6px; border:1px solid #242f45; margin-bottom:12px; font-size:0.85rem; color:#8b949e;">
+                    <strong>两步出流：</strong><br>
+                    1. 切换到浏览器第 9 个标签页（您已经打开的 <a href="https://open.ys7.com" target="_blank" style="color:#79c0ff; text-decoration:underline;">open.ys7.com</a>），进入控制台复制您的 <code>AppKey</code> 与 <code>AppSecret</code>；<br>
+                    2. 粘贴在下方并点击「🚀 立即激活全部高清码流」，网关会自动直连萤石拉流矩阵，<strong>监控墙立刻出画面！</strong>
                 </div>
-                <div id="actMsg" style="font-size:0.85rem; margin-top:6px; display:none;"></div>
+                <div id="activationInputs" style="display:flex; gap:10px; flex-wrap:wrap;">
+                    <input type="text" id="actAppKey" placeholder="输入开放平台 AppKey" style="min-width:220px;">
+                    <input type="password" id="actAppSecret" placeholder="输入开放平台 AppSecret" style="min-width:220px;">
+                    <button class="green" style="padding:10px 20px; font-weight:600;" onclick="activateOpenStreams()">🚀 立即激活全部高清码流</button>
+                </div>
+                <div id="actMsg" style="font-size:0.9rem; margin-top:10px; display:none; padding:8px 12px; border-radius:4px;"></div>
             </div>
 
             <div class="wall-grid" id="wallGrid">
@@ -648,6 +677,9 @@ HTML_PAGE = """<!DOCTYPE html>
             }
         }
 
+        let globalStatuses = {};
+        let globalCustoms = {};
+
         async function loadStatus() {
             try {
                 const res = await fetch('/api/status');
@@ -661,19 +693,21 @@ HTML_PAGE = """<!DOCTYPE html>
                     document.getElementById('accountLabel').innerText = `已连接账号: ${data.account || '萤石用户'}`;
                     document.getElementById('sessionDetails').innerText = `SessionID: ${data.session_id_masked} | 登录时间: ${data.login_time || '近期'} | 运行节点: ${host}`;
                     document.getElementById('headerStatus').innerText = '🟢 已登录萤石官方通道';
-                    renderCameras(data.cameras || []);
+                    globalStatuses = data.stream_statuses || {};
+                    globalCustoms = data.custom_streams || {};
+                    renderCameras(data.cameras || [], globalStatuses, globalCustoms);
                 } else {
                     document.getElementById('loginCard').style.display = 'block';
                     document.getElementById('userCard').style.display = 'none';
                     document.getElementById('headerStatus').innerText = '⚪ 未登录';
-                    renderCameras([]);
+                    renderCameras([], {}, {});
                 }
             } catch (e) {
                 console.error(e);
             }
         }
 
-        function renderCameras(cameras) {
+        function renderCameras(cameras, streamStatuses, customStreams) {
             document.getElementById('camCount').innerText = cameras.length;
             const container = document.getElementById('camList');
             const wallCard = document.getElementById('wallCard');
@@ -686,16 +720,33 @@ HTML_PAGE = """<!DOCTYPE html>
                 return;
             }
 
-            // 渲染全部摄像头多画面实时监控墙
+            let activeCount = 0;
+            cameras.forEach(c => {
+                const sName = `cam_${c.deviceSerial}_ch${c.channelNo || 1}`;
+                const st = (streamStatuses && streamStatuses[sName]) || {};
+                if (st.type && st.type !== 'none') activeCount++;
+            });
+
             wallCard.style.display = 'block';
-            document.getElementById('wallCountBadge').innerText = `${cameras.length} 路在线`;
+            document.getElementById('wallCountBadge').innerText = `${cameras.length} 路设备 (${activeCount} 路出流就绪)`;
+
+            // 渲染全部摄像头多画面实时监控墙
             wallGrid.innerHTML = cameras.map(c => {
                 const streamName = `cam_${c.deviceSerial}_ch${c.channelNo || 1}`;
+                const st = (streamStatuses && streamStatuses[streamName]) || {};
+                let statusBadge = '<span class="badge" style="background:#4d3800; color:#e3b341; border:1px solid #9e6a03;">🟡 待配视频源</span>';
+                if (st.type === 'open') {
+                    statusBadge = '<span class="badge online">🟢 官方云直连</span>';
+                } else if (st.type === 'custom') {
+                    statusBadge = '<span class="badge online" style="background:#0c2d6b; color:#58a6ff; border:1px solid #1f6feb;">🔵 内网直连</span>';
+                }
+
                 return `
                 <div class="wall-cell" id="wall_cell_${streamName}">
                     <div class="cell-tag">
                         <span class="dot" style="width:7px; height:7px;"></span>
                         <span>${c.deviceName || c.deviceSerial} (通道 ${c.channelNo || 1})</span>
+                        ${statusBadge}
                     </div>
                     <iframe id="wall_frame_${streamName}" src="http://${host}:1984/stream.html?src=${streamName}&mode=webrtc" allowfullscreen></iframe>
                 </div>
@@ -707,16 +758,30 @@ HTML_PAGE = """<!DOCTYPE html>
                 const isOnline = (String(c.status) === '1');
                 const streamName = `cam_${c.deviceSerial}_ch${c.channelNo || 1}`;
                 const rtspUrl = `rtsp://${host}:8554/${streamName}`;
+                const st = (streamStatuses && streamStatuses[streamName]) || {};
+                const customVal = (customStreams && customStreams[streamName]) || '';
+                
+                let streamSourceText = '🟡 占位回环 (等待官方 AppKey 激活或配置本地 RTSP)';
+                if (st.type === 'open') {
+                    streamSourceText = '🟢 萤石云官方直连码流 (已生效)';
+                } else if (st.type === 'custom') {
+                    streamSourceText = '🔵 自定义/本地 RTSP: ' + customVal;
+                }
+
                 return `
                 <div class="cam-card">
                     <div class="cam-name">
                         <span>${c.deviceName || c.deviceSerial}</span>
-                        <span class="badge ${isOnline ? 'online' : 'offline'}">${isOnline ? '在线' : '离线'}</span>
+                        <div style="display:flex; gap:6px;">
+                            ${st.type === 'open' ? '<span class="badge online">官方云直连</span>' : (st.type === 'custom' ? '<span class="badge online" style="background:#0c2d6b; color:#58a6ff; border:1px solid #1f6feb;">内网直连</span>' : '<span class="badge" style="background:#4d3800; color:#e3b341; border:1px solid #9e6a03;">待配视频源</span>')}
+                            <span class="badge ${isOnline ? 'online' : 'offline'}">${isOnline ? '在线' : '离线'}</span>
+                        </div>
                     </div>
                     <div class="cam-info">
                         <div>序列号: <code>${c.deviceSerial}</code> (通道 ${c.channelNo || 1})</div>
                         <div>视频加密: ${c.isEncrypt === 1 ? '🔒 已加密 (AES-128)' : '🔓 未加密'}</div>
-                        <div>RTSP 地址: <code style="word-break:break-all;">${rtspUrl}</code></div>
+                        <div>当前视频源: <span style="color:#79c0ff; word-break:break-all;">${streamSourceText}</span></div>
+                        <div>对外 RTSP 地址: <code style="word-break:break-all;">${rtspUrl}</code></div>
                     </div>
                     <div class="card-player-box" id="card_player_${streamName}">
                         <iframe id="card_frame_${streamName}" src="" allowfullscreen></iframe>
@@ -727,10 +792,46 @@ HTML_PAGE = """<!DOCTYPE html>
                             <button class="btn-sm">新窗口大图</button>
                         </a>
                         <button class="btn-sm" onclick="navigator.clipboard.writeText('${rtspUrl}'); alert('已复制 RTSP 播放地址: ${rtspUrl}');">📋 复制 RTSP</button>
+                        <button class="btn-sm" onclick="toggleCustomBox('${streamName}')">⚙️ 配置本地/自定义源</button>
+                    </div>
+                    <div id="custom_box_${streamName}" style="display:none; margin-top:10px; padding:10px; background:#0b101b; border:1px solid var(--border); border-radius:6px;">
+                        <div style="font-size:0.8rem; color:var(--text-sub); margin-bottom:6px;">
+                            配置此通道的视频源 (可填内网 RTSP，如 <code>rtsp://admin:pass@10.0.0.xxx:554/Streaming/Channels/301</code> 或 FLV 地址，留空重置)：
+                        </div>
+                        <div style="display:flex; gap:6px;">
+                            <input type="text" id="input_custom_${streamName}" value="${customVal}" placeholder="输入 RTSP / FLV 源地址">
+                            <button class="btn-sm green" onclick="saveCustomStream('${streamName}')">保存并生效</button>
+                        </div>
                     </div>
                 </div>
                 `;
             }).join('');
+        }
+
+        function toggleCustomBox(sName) {
+            const el = document.getElementById('custom_box_' + sName);
+            el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
+        }
+
+        async function saveCustomStream(sName) {
+            const input = document.getElementById('input_custom_' + sName);
+            const url = input.value.trim();
+            try {
+                const res = await fetch('/api/camera/stream/set', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ stream_name: sName, stream_url: url })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    alert('已保存并重新加载流源！');
+                    loadStatus();
+                } else {
+                    alert('保存失败: ' + d.message);
+                }
+            } catch (e) {
+                alert('请求异常: ' + e);
+            }
         }
 
         function playAllWall() {
@@ -796,7 +897,10 @@ HTML_PAGE = """<!DOCTYPE html>
                 const data = await res.json();
                 if (data.success) {
                     msgEl.innerText = '✅ 激活成功！全部 5 路摄像头视频源已绑定并启动，正在加载实时画面...';
-                    setTimeout(() => { playAllWall(); }, 1000);
+                    setTimeout(() => { 
+                        loadStatus();
+                        playAllWall(); 
+                    }, 1200);
                 } else {
                     msgEl.style.color = '#ff7b72';
                     msgEl.innerText = '激活失败: ' + (data.message || '凭证错误');
@@ -879,6 +983,9 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 "session_id_masked": masked,
                 "login_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(token.get("login_time", time.time()))),
                 "cameras": cams,
+                "custom_streams": token.get("custom_streams") or {},
+                "stream_statuses": token.get("stream_statuses") or {},
+                "has_open_token": bool(token.get("access_token")),
             })
             return
 
@@ -1208,6 +1315,24 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self.send_json({"success": False, "message": str(e)})
             return
 
+        if parsed.path == "/api/camera/stream/set":
+            stream_name = str(params.get("stream_name", "")).strip()
+            stream_url = str(params.get("stream_url", "")).strip()
+            if not stream_name:
+                self.send_json({"success": False, "message": "通道标识 stream_name 不能为空"})
+                return
+            saved = load_saved_token() or {}
+            custom = saved.get("custom_streams") or {}
+            if stream_url:
+                custom[stream_name] = stream_url
+            else:
+                custom.pop(stream_name, None)
+            saved["custom_streams"] = custom
+            save_token_data(saved)
+            self.update_go2rtc_streams(saved.get("devices") or [])
+            self.send_json({"success": True, "stream_name": stream_name, "stream_url": stream_url})
+            return
+
         if parsed.path == "/api/logout":
             if os.path.exists(TOKEN_FILE):
                 os.remove(TOKEN_FILE)
@@ -1261,8 +1386,11 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 logging.warning("Query failed on %s: %s", url, e)
         return devices
 
-
     def update_go2rtc_streams(self, devices, access_token=None):
+        saved = load_saved_token() or {}
+        custom_streams = saved.get("custom_streams") or {}
+        active_token = access_token or saved.get("access_token")
+
         lines = [
             "api:",
             '  listen: ":1984"',
@@ -1275,6 +1403,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
             "",
             "streams:",
         ]
+        statuses = {}
         for d in devices:
             serial = str(d.get("deviceSerial", "")).strip().upper()
             ch = int(d.get("channelNo", 1))
@@ -1282,14 +1411,31 @@ class GatewayHandler(BaseHTTPRequestHandler):
             clean_name = re.sub(r"[^0-9A-Za-z_\-]", "_", f"cam_{serial}_ch{ch}")
             lines.append(f"  # {name} (Serial: {serial})")
             lines.append(f"  {clean_name}:")
+            
             stream_url = None
-            if access_token:
-                stream_url = get_open_live_url(access_token, serial, ch)
+            source_type = "none"
+            # 1. Custom / Local RTSP
+            if clean_name in custom_streams and custom_streams[clean_name]:
+                stream_url = custom_streams[clean_name]
+                source_type = "custom"
+            # 2. Open Platform direct stream
+            elif active_token:
+                stream_url = get_open_live_url(active_token, serial, ch)
+                if stream_url:
+                    source_type = "open"
+
             if stream_url:
                 lines.append(f'    - "{stream_url}"')
             else:
                 lines.append(f'    - "rtsp://127.0.0.1:8554/{clean_name}"')
-        
+            statuses[clean_name] = {
+                "url": stream_url or "",
+                "type": source_type
+            }
+
+        saved["stream_statuses"] = statuses
+        save_token_data(saved)
+
         content = "\n".join(lines) + "\n"
         with open(GO2RTC_YAML, "w", encoding="utf-8") as f:
             f.write(content)
