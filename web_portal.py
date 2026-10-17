@@ -28,10 +28,52 @@ logging.basicConfig(
 )
 
 API_BASE_APP = "https://api.ys7.com"
+API_BASE_OPEN = "https://open.ys7.com"
 PORT = 80
 TOKEN_FILE = "/opt/ezviz2onvif/token.json"
 GO2RTC_YAML = "/opt/ezviz2onvif/go2rtc.yaml"
 GO2RTC_API = "http://127.0.0.1:1984"
+
+
+def find_urls(obj, scheme):
+    found = []
+
+    def walk(v):
+        if isinstance(v, str):
+            if v.startswith(scheme + "://"):
+                found.append(v)
+        elif isinstance(v, list):
+            for i in v:
+                walk(i)
+        elif isinstance(v, dict):
+            for i in v.values():
+                walk(i)
+
+    walk(obj)
+    return found
+
+
+def get_open_live_url(token, serial, channel):
+    for proto in ["rtsp", "rtmp", "flv"]:
+        try:
+            r = post_json_api(
+                f"{API_BASE_OPEN}/api/lapp/v2/live/urls/get",
+                {
+                    "accessToken": token,
+                    "deviceSerial": serial,
+                    "channelNo": channel,
+                    "protocol": proto,
+                    "quality": "hd",
+                    "expireTime": 86400,
+                },
+            )
+            urls = find_urls(r.get("data"), proto)
+            if urls:
+                return urls[0]
+        except Exception as e:
+            logging.debug("get_open_live_url %s failed: %s", proto, e)
+    return None
+
 
 DEFAULT_PROFILE = {
     "featureCode": "358721094812395b00c28471e98d12a4",
@@ -279,6 +321,7 @@ HTML_PAGE = """<!DOCTYPE html>
             <div class="tabs">
                 <button class="tab-btn active" id="tabSmsBtn" onclick="switchTab('sms')">📱 手机短信验证码登录</button>
                 <button class="tab-btn" id="tabPwdBtn" onclick="switchTab('pwd')">🔑 账号密码登录</button>
+                <button class="tab-btn" id="tabOpenBtn" onclick="switchTab('open')">⚡ 开放平台 AppKey 登录 (免验证码/最稳定)</button>
             </div>
 
             <!-- 短信登录表单 -->
@@ -294,6 +337,9 @@ HTML_PAGE = """<!DOCTYPE html>
                     <label>短信验证码：</label>
                     <input type="text" id="smsCode" placeholder="输入收到的 6 位短信验证码">
                 </div>
+                <div style="font-size:0.8rem; color:var(--text-sub); margin-bottom:8px;">
+                    💡 提示：若未收到短信，请检查手机是否开启了「垃圾短信拦截 / 骚扰拦截」，或切换至右侧「账号密码登录」/「开放平台登录」。
+                </div>
                 <button type="button" class="green" style="width:100%; margin-top:8px;" onclick="submitSmsLogin()">确认登录并同步设备</button>
             </div>
 
@@ -308,6 +354,22 @@ HTML_PAGE = """<!DOCTYPE html>
                     <input type="password" id="pwdPassword" placeholder="输入账号密码">
                 </div>
                 <button type="button" class="green" style="width:100%; margin-top:8px;" onclick="submitPwdLogin()">确认登录并同步设备</button>
+            </div>
+
+            <!-- 开放平台登录表单 -->
+            <div id="openForm" style="display:none;">
+                <div class="form-row">
+                    <label>开放平台 AppKey：</label>
+                    <input type="text" id="openAppKey" placeholder="输入在 open.ys7.com 控制台创建的 AppKey">
+                </div>
+                <div class="form-row">
+                    <label>开放平台 AppSecret：</label>
+                    <input type="password" id="openAppSecret" placeholder="输入在 open.ys7.com 控制台的 Secret">
+                </div>
+                <div style="font-size:0.8rem; color:var(--text-sub); margin-bottom:8px;">
+                    💡 提示：在您已打开的「萤石云开放平台」控制台直接复制 AppKey 与 Secret 即可，无需短信验证码，永久有效且不产生公网流量费！
+                </div>
+                <button type="button" class="green" style="width:100%; margin-top:8px;" onclick="submitOpenLogin()">通过开放平台凭证登录并同步设备</button>
             </div>
 
             <div id="loginMsg" class="msg-box"></div>
@@ -365,10 +427,36 @@ HTML_PAGE = """<!DOCTYPE html>
         function switchTab(type) {
             document.getElementById('tabSmsBtn').className = (type === 'sms') ? 'tab-btn active' : 'tab-btn';
             document.getElementById('tabPwdBtn').className = (type === 'pwd') ? 'tab-btn active' : 'tab-btn';
+            document.getElementById('tabOpenBtn').className = (type === 'open') ? 'tab-btn active' : 'tab-btn';
             document.getElementById('smsForm').style.display = (type === 'sms') ? 'block' : 'none';
             document.getElementById('pwdForm').style.display = (type === 'pwd') ? 'block' : 'none';
+            document.getElementById('openForm').style.display = (type === 'open') ? 'block' : 'none';
             showMsg('', '');
         }
+
+        async function submitOpenLogin() {
+            const appKey = document.getElementById('openAppKey').value.trim();
+            const appSecret = document.getElementById('openAppSecret').value.trim();
+            if (!appKey || !appSecret) { showMsg('请输入 AppKey 和 AppSecret', 'error'); return; }
+            showMsg('正在向开放平台获取 Token 并同步设备...', 'success');
+            try {
+                const res = await fetch('/api/login/open', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ appKey, appSecret })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showMsg('登录成功！已自动获取摄像头列表', 'success');
+                    loadStatus();
+                } else {
+                    showMsg('登录失败: ' + (data.message || '凭证错误'), 'error');
+                }
+            } catch (e) {
+                showMsg('请求异常: ' + e, 'error');
+            }
+        }
+
 
         function showMsg(text, type) {
             const el = document.getElementById('loginMsg');
@@ -744,17 +832,123 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self.send_json({"success": False, "message": str(e)})
             return
 
+        if parsed.path == "/api/login/open":
+            app_key = str(params.get("appKey", "")).strip()
+            app_secret = str(params.get("appSecret", "")).strip()
+            if not app_key or not app_secret:
+                self.send_json({"success": False, "message": "AppKey 或 AppSecret 不能为空"})
+                return
+
+            try:
+                logging.info("Requesting accessToken from open.ys7.com...")
+                token_res = post_json_api(
+                    f"{API_BASE_OPEN}/api/lapp/token/get",
+                    {"appKey": app_key, "appSecret": app_secret}
+                )
+                if str(token_res.get("code")) != "200":
+                    self.send_json({"success": False, "message": token_res.get("msg", "获取 AccessToken 失败")})
+                    return
+                token_data = token_res.get("data") or {}
+                access_token = token_data.get("accessToken")
+                if not access_token:
+                    self.send_json({"success": False, "message": "返回的 AccessToken 为空"})
+                    return
+
+                logging.info("AccessToken obtained! Querying device list...")
+                dev_res = post_json_api(
+                    f"{API_BASE_OPEN}/api/lapp/device/list",
+                    {"accessToken": access_token, "pageStart": 0, "pageSize": 50}
+                )
+                cams = []
+                raw_devs = dev_res.get("data") or []
+                for d in raw_devs:
+                    serial = str(d.get("deviceSerial", "")).strip().upper()
+                    if not serial:
+                        continue
+                    name = d.get("deviceName", serial)
+                    st = d.get("status", 1)
+                    try:
+                        cam_res = post_json_api(
+                            f"{API_BASE_OPEN}/api/lapp/camera/list",
+                            {"accessToken": access_token, "deviceSerial": serial}
+                        )
+                        sub_cams = cam_res.get("data") or []
+                    except Exception:
+                        sub_cams = []
+
+                    if sub_cams:
+                        for sc in sub_cams:
+                            ch = sc.get("channelNo", 1)
+                            cname = sc.get("channelName") or name
+                            cams.append({
+                                "deviceSerial": serial,
+                                "deviceName": cname,
+                                "channelNo": int(ch),
+                                "status": int(st),
+                                "isEncrypt": int(sc.get("isEncrypt", 0)),
+                            })
+                    else:
+                        cams.append({
+                            "deviceSerial": serial,
+                            "deviceName": name,
+                            "channelNo": 1,
+                            "status": int(st),
+                            "isEncrypt": 0,
+                        })
+
+                saved_data = {
+                    "auth_mode": "open",
+                    "session_id": access_token,
+                    "access_token": access_token,
+                    "app_key": app_key,
+                    "app_secret": app_secret,
+                    "account": f"开放平台 ({app_key[:6]}...)",
+                    "login_time": int(time.time()),
+                    "devices": cams,
+                }
+                save_token_data(saved_data)
+                self.update_go2rtc_streams(cams, access_token=access_token)
+                self.send_json({"success": True, "count": len(cams)})
+            except Exception as e:
+                logging.exception("Open platform login exception: %s", e)
+                self.send_json({"success": False, "message": str(e)})
+            return
+
         if parsed.path == "/api/sync":
             token = load_saved_token()
             if not token or not token.get("session_id"):
                 self.send_json({"success": False, "message": "尚未登录"})
                 return
             try:
-                cams = self.fetch_devices(token["session_id"])
-                token["devices"] = cams
-                save_token_data(token)
-                self.update_go2rtc_streams(cams)
-                self.send_json({"success": True, "count": len(cams)})
+                if token.get("auth_mode") == "open":
+                    access_token = token.get("access_token") or token.get("session_id")
+                    dev_res = post_json_api(
+                        f"{API_BASE_OPEN}/api/lapp/device/list",
+                        {"accessToken": access_token, "pageStart": 0, "pageSize": 50}
+                    )
+                    cams = []
+                    for d in dev_res.get("data") or []:
+                        serial = str(d.get("deviceSerial", "")).strip().upper()
+                        if not serial: continue
+                        name = d.get("deviceName", serial)
+                        st = d.get("status", 1)
+                        cams.append({
+                            "deviceSerial": serial,
+                            "deviceName": name,
+                            "channelNo": 1,
+                            "status": int(st),
+                            "isEncrypt": 0,
+                        })
+                    token["devices"] = cams
+                    save_token_data(token)
+                    self.update_go2rtc_streams(cams, access_token=access_token)
+                    self.send_json({"success": True, "count": len(cams)})
+                else:
+                    cams = self.fetch_devices(token["session_id"])
+                    token["devices"] = cams
+                    save_token_data(token)
+                    self.update_go2rtc_streams(cams)
+                    self.send_json({"success": True, "count": len(cams)})
             except Exception as e:
                 logging.exception("Sync exception: %s", e)
                 self.send_json({"success": False, "message": str(e)})
@@ -814,7 +1008,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
         return devices
 
 
-    def update_go2rtc_streams(self, devices):
+    def update_go2rtc_streams(self, devices, access_token=None):
         lines = [
             "api:",
             '  listen: ":1984"',
@@ -832,16 +1026,21 @@ class GatewayHandler(BaseHTTPRequestHandler):
             ch = int(d.get("channelNo", 1))
             name = d.get("deviceName", serial)
             clean_name = re.sub(r"[^0-9A-Za-z_\-]", "_", f"cam_{serial}_ch{ch}")
-            # Map stream to local proxy or direct stream
             lines.append(f"  # {name} (Serial: {serial})")
             lines.append(f"  {clean_name}:")
-            # If the device has local IP or cloud VTDU mapping
-            lines.append(f'    - "rtsp://127.0.0.1:8554/{clean_name}"')
+            stream_url = None
+            if access_token:
+                stream_url = get_open_live_url(access_token, serial, ch)
+            if stream_url:
+                lines.append(f'    - "{stream_url}"')
+            else:
+                lines.append(f'    - "rtsp://127.0.0.1:8554/{clean_name}"')
         
         content = "\n".join(lines) + "\n"
         with open(GO2RTC_YAML, "w", encoding="utf-8") as f:
             f.write(content)
         reload_go2rtc()
+
 
 
 def main():
