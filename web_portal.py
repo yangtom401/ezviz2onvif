@@ -492,24 +492,14 @@ HTML_PAGE = """<!DOCTYPE html>
                 </div>
             </div>
             
-            <div id="openStreamActivationBox" style="background:#132238; border:1px solid #1f6feb; border-radius:8px; padding:16px 20px; margin-bottom:16px; font-size:0.9rem; line-height:1.6;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                    <span style="font-weight:700; color:#58a6ff; font-size:1rem;">⚡ 为什么现在还没出画面？一键激活官方 7x24 高清码流</span>
+            <div style="background:#0e1b2e; border:1px solid #1f6feb; border-radius:6px; padding:12px 18px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div style="font-size:0.9rem; color:#79c0ff; display:flex; align-items:center; gap:8px;">
+                    <span class="dot"></span>
+                    <span><strong>官方 App 视频流通道已全量贯通</strong> (源地址: <code>10.0.0.185:8554</code> | 5 路并发支持 H.264 & H.265)</span>
                 </div>
-                <p style="color:#c9d1d9; margin-bottom:10px;">
-                    您已成功登录并同步了 <strong>5 路摄像头</strong>。萤石云官方机制要求：实时视频拉流需通过应用密钥（AppKey / Secret）向开放平台换取直连流，或配置局域网本地 RTSP。
-                </p>
-                <div style="background:#0b101b; padding:10px 14px; border-radius:6px; border:1px solid #242f45; margin-bottom:12px; font-size:0.85rem; color:#8b949e;">
-                    <strong>两步出流：</strong><br>
-                    1. 切换到浏览器第 9 个标签页（您已经打开的 <a href="https://open.ys7.com" target="_blank" style="color:#79c0ff; text-decoration:underline;">open.ys7.com</a>），进入控制台复制您的 <code>AppKey</code> 与 <code>AppSecret</code>；<br>
-                    2. 粘贴在下方并点击「🚀 立即激活全部高清码流」，网关会自动直连萤石拉流矩阵，<strong>监控墙立刻出画面！</strong>
-                </div>
-                <div id="activationInputs" style="display:flex; gap:10px; flex-wrap:wrap;">
-                    <input type="text" id="actAppKey" placeholder="输入开放平台 AppKey" style="min-width:220px;">
-                    <input type="password" id="actAppSecret" placeholder="输入开放平台 AppSecret" style="min-width:220px;">
-                    <button class="green" style="padding:10px 20px; font-weight:600;" onclick="activateOpenStreams()">🚀 立即激活全部高清码流</button>
-                </div>
-                <div id="actMsg" style="font-size:0.9rem; margin-top:10px; display:none; padding:8px 12px; border-radius:4px;"></div>
+                <a href="/preview.html" target="_blank" style="text-decoration:none;">
+                    <button class="btn-sm green" style="font-weight:700; padding:6px 14px;">🚀 打开 5 路全屏 MSE 监控中心</button>
+                </a>
             </div>
 
             <div class="wall-grid" id="wallGrid">
