@@ -700,13 +700,15 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self.send_json({"success": False, "message": "手机号码不能为空"})
                 return
             headers = build_app_headers()
-            data = {"from": account, "bizType": "USER_LOGIN"}
+            data = {"from": account, "msgType": "1", "bizType": "USER_LOGIN"}
             try:
-                res = post_json_api(f"{API_BASE_APP}/v3/sms/checkcode", data, headers=headers)
+                res = post_json_api(f"{API_BASE_APP}/v3/users/checkcode/mt/unlogin", data, headers=headers)
                 meta = res.get("meta", {})
                 code = str(meta.get("code", "200"))
                 if code == "200":
                     self.send_json({"success": True})
+                elif code == "1042":
+                    self.send_json({"success": False, "message": "短信发送频繁，请稍候2分钟后重试，或直接使用账号密码登录！"})
                 else:
                     self.send_json({"success": False, "message": meta.get("message") or f"发送失败(code {code})"})
             except Exception as e:
@@ -740,10 +742,16 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     self.send_json({"success": False, "message": meta.get("message", "登录失败")})
                     return
 
+                session_info = res.get("sessionInfo") or {}
                 user_data = res.get("userInfos") or res.get("data") or {}
-                session_id = res.get("sessionId") or user_data.get("sessionId") or user_data.get("token")
+                session_id = (
+                    res.get("sessionId")
+                    or session_info.get("sessionId")
+                    or user_data.get("sessionId")
+                    or user_data.get("token")
+                )
                 if not session_id:
-                    self.send_json({"success": False, "message": "未获取到有效 SessionID，返回: " + json.dumps(res, ensure_ascii=False)})
+                    self.send_json({"success": False, "message": "未获取到有效 SessionID，返回: " + json.dumps(res, ensure_ascii=False)[:200]})
                     return
 
                 cams = []
@@ -794,19 +802,26 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     self.send_json({"success": False, "message": meta.get("message", "账号或密码错误")})
                     return
 
-                if res.get("needTerminalValidate") or res.get("terminalValidate"):
+                session_info = res.get("sessionInfo") or {}
+                user_data = res.get("userInfos") or res.get("data") or {}
+                session_id = (
+                    res.get("sessionId")
+                    or session_info.get("sessionId")
+                    or user_data.get("sessionId")
+                    or user_data.get("token")
+                )
+
+                if (res.get("needTerminalValidate") or res.get("terminalValidate")) and not session_id:
                     self.send_json({
                         "success": False,
                         "message": "萤石安全防护：检测到新客户端首次登录，需要短信验证码。请切换至「手机短信验证码登录」标签页获取短信登录！"
                     })
                     return
 
-                user_data = res.get("userInfos") or res.get("data") or {}
-                session_id = res.get("sessionId") or user_data.get("sessionId") or user_data.get("token")
                 if not session_id:
                     self.send_json({
                         "success": False,
-                        "message": "账号密码正确，但萤石要求新设备终端安全验证，请直接使用「手机短信验证码登录」！"
+                        "message": "登录未返回 SessionID: " + json.dumps(res, ensure_ascii=False)[:200]
                     })
                     return
 
