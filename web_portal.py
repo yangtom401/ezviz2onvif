@@ -337,6 +337,10 @@ HTML_PAGE = """<!DOCTYPE html>
                     <label>短信验证码：</label>
                     <input type="text" id="smsCode" placeholder="输入收到的 6 位短信验证码">
                 </div>
+                <div class="form-row">
+                    <label>账号密码：</label>
+                    <input type="password" id="smsPassword" placeholder="输入萤石账号登录密码 (萤石安全机制要求新设备需密码+短信双因子验证)">
+                </div>
                 <div style="font-size:0.8rem; color:var(--text-sub); margin-bottom:8px;">
                     💡 提示：若未收到短信，请检查手机是否开启了「垃圾短信拦截 / 骚扰拦截」，或切换至右侧「账号密码登录」/「开放平台登录」。
                 </div>
@@ -506,20 +510,22 @@ HTML_PAGE = """<!DOCTYPE html>
         async function submitSmsLogin() {
             const phone = document.getElementById('smsPhone').value.trim();
             const code = document.getElementById('smsCode').value.trim();
+            const password = document.getElementById('smsPassword').value.trim();
             if (!phone || !code) { showMsg('请输入手机号和收到的验证码', 'error'); return; }
-            showMsg('正在登录并同步设备...', 'success');
+            if (!password) { showMsg('请输入您的账号密码（萤石云在新客户端上采用密码+短信双因子认证）', 'error'); return; }
+            showMsg('正在验证并同步设备...', 'success');
             try {
                 const res = await fetch('/api/login/sms', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ account: phone, sms_code: code })
+                    body: JSON.stringify({ account: phone, sms_code: code, password: password })
                 });
                 const data = await res.json();
                 if (data.success) {
                     showMsg('登录成功！已自动获取摄像头列表', 'success');
                     loadStatus();
                 } else {
-                    showMsg('登录失败: ' + (data.message || '验证码错误'), 'error');
+                    showMsg('登录失败: ' + (data.message || '验证码或密码错误'), 'error');
                 }
             } catch (e) {
                 showMsg('请求异常: ' + e, 'error');
@@ -719,21 +725,25 @@ class GatewayHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/login/sms":
             account = str(params.get("account", "")).strip()
             code = str(params.get("sms_code", "")).strip()
-            if not account or not code:
-                self.send_json({"success": False, "message": "手机号或验证码不能为空"})
+            password = str(params.get("password", "")).strip()
+            if not account:
+                self.send_json({"success": False, "message": "手机号不能为空"})
                 return
 
             headers = build_app_headers()
             payload = {
                 "account": account,
-                "smsCode": code,
-                "msgType": "3",
+                "msgType": "0",
                 "bizType": "USER_LOGIN",
                 "featureCode": DEFAULT_PROFILE["featureCode"],
                 "cuName": DEFAULT_PROFILE["cuName"],
                 "clientType": DEFAULT_PROFILE["clientType"],
                 "netType": DEFAULT_PROFILE["netType"],
             }
+            if code:
+                payload["smsCode"] = code
+            if password:
+                payload["password"] = hashlib.md5(password.encode("utf-8")).hexdigest()
             try:
                 res = post_json_api(f"{API_BASE_APP}/v3/users/login/v2", payload, headers=headers)
                 meta = res.get("meta", {})
