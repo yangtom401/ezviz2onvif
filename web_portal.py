@@ -72,8 +72,25 @@ def post_json_api(url, data_dict, headers=None):
     if headers:
         for k, v in headers.items():
             req.add_header(k, v)
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            content = resp.read().decode("utf-8")
+            logging.info("POST %s -> %s", url, content[:300])
+            return json.loads(content)
+    except urllib.error.HTTPError as e:
+        err_raw = e.read().decode("utf-8", errors="replace")
+        logging.error("POST %s failed (%d): %s", url, e.code, err_raw)
+        try:
+            err_json = json.loads(err_raw)
+            msg = err_json.get("meta", {}).get("message") or err_json.get("message")
+            if msg:
+                raise RuntimeError(msg)
+        except Exception as parse_ex:
+            if not isinstance(parse_ex, RuntimeError):
+                pass
+            else:
+                raise parse_ex
+        raise RuntimeError(f"HTTP {e.code}: {err_raw[:120]}")
 
 
 def get_json_api(url, headers=None):
@@ -81,8 +98,26 @@ def get_json_api(url, headers=None):
     if headers:
         for k, v in headers.items():
             req.add_header(k, v)
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            content = resp.read().decode("utf-8")
+            logging.info("GET %s -> %s", url, content[:300])
+            return json.loads(content)
+    except urllib.error.HTTPError as e:
+        err_raw = e.read().decode("utf-8", errors="replace")
+        logging.error("GET %s failed (%d): %s", url, e.code, err_raw)
+        try:
+            err_json = json.loads(err_raw)
+            msg = err_json.get("meta", {}).get("message") or err_json.get("message")
+            if msg:
+                raise RuntimeError(msg)
+        except Exception as parse_ex:
+            if not isinstance(parse_ex, RuntimeError):
+                pass
+            else:
+                raise parse_ex
+        raise RuntimeError(f"HTTP {e.code}: {err_raw[:120]}")
+
 
 
 def load_saved_token():
@@ -577,15 +612,17 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self.send_json({"success": False, "message": "手机号码不能为空"})
                 return
             headers = build_app_headers()
-            data = {"account": account, "bizType": "USER_LOGIN", "featureCode": DEFAULT_PROFILE["featureCode"]}
+            data = {"from": account, "bizType": "USER_LOGIN"}
             try:
-                res = post_json_api(f"{API_BASE_APP}/v3/sms/nologin/checkcode", data, headers=headers)
+                res = post_json_api(f"{API_BASE_APP}/v3/sms/checkcode", data, headers=headers)
                 meta = res.get("meta", {})
-                if str(meta.get("code")) == "200":
+                code = str(meta.get("code", "200"))
+                if code == "200":
                     self.send_json({"success": True})
                 else:
-                    self.send_json({"success": False, "message": meta.get("message", "发送失败")})
+                    self.send_json({"success": False, "message": meta.get("message") or f"发送失败(code {code})"})
             except Exception as e:
+                logging.exception("SMS send exception: %s", e)
                 self.send_json({"success": False, "message": str(e)})
             return
 
@@ -593,7 +630,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
             account = str(params.get("account", "")).strip()
             code = str(params.get("sms_code", "")).strip()
             if not account or not code:
-                self.send_json({"success": False, "message": "参数缺失"})
+                self.send_json({"success": False, "message": "手机号或验证码不能为空"})
                 return
 
             headers = build_app_headers()
@@ -601,7 +638,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 "account": account,
                 "smsCode": code,
                 "msgType": "3",
-                "bizType": "TERMINAL_BIND",
+                "bizType": "USER_LOGIN",
                 "featureCode": DEFAULT_PROFILE["featureCode"],
                 "cuName": DEFAULT_PROFILE["cuName"],
                 "clientType": DEFAULT_PROFILE["clientType"],
@@ -610,15 +647,23 @@ class GatewayHandler(BaseHTTPRequestHandler):
             try:
                 res = post_json_api(f"{API_BASE_APP}/v3/users/login/v2", payload, headers=headers)
                 meta = res.get("meta", {})
-                if str(meta.get("code")) != "200":
+                m_code = str(meta.get("code", "200"))
+                if m_code not in ("200", "0"):
                     self.send_json({"success": False, "message": meta.get("message", "登录失败")})
                     return
 
                 user_data = res.get("userInfos") or res.get("data") or {}
                 session_id = res.get("sessionId") or user_data.get("sessionId") or user_data.get("token")
+                if not session_id:
+                    self.send_json({"success": False, "message": "未获取到有效 SessionID，返回: " + json.dumps(res, ensure_ascii=False)})
+                    return
 
-                # Fetch devices
-                cams = self.fetch_devices(session_id)
+                cams = []
+                try:
+                    cams = self.fetch_devices(session_id)
+                except Exception as ex:
+                    logging.warning("fetch_devices warning: %s", ex)
+
                 saved_data = {
                     "session_id": session_id,
                     "user_id": user_data.get("userId"),
@@ -631,6 +676,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self.update_go2rtc_streams(cams)
                 self.send_json({"success": True, "count": len(cams)})
             except Exception as e:
+                logging.exception("SMS login exception: %s", e)
                 self.send_json({"success": False, "message": str(e)})
             return
 
@@ -638,7 +684,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
             account = str(params.get("account", "")).strip()
             password = str(params.get("password", "")).strip()
             if not account or not password:
-                self.send_json({"success": False, "message": "参数缺失"})
+                self.send_json({"success": False, "message": "账号或密码不能为空"})
                 return
 
             headers = build_app_headers()
@@ -655,15 +701,33 @@ class GatewayHandler(BaseHTTPRequestHandler):
             try:
                 res = post_json_api(f"{API_BASE_APP}/v3/users/login/v2", payload, headers=headers)
                 meta = res.get("meta", {})
-                if str(meta.get("code")) != "200":
+                m_code = str(meta.get("code", "200"))
+                if m_code not in ("200", "0"):
                     self.send_json({"success": False, "message": meta.get("message", "账号或密码错误")})
+                    return
+
+                if res.get("needTerminalValidate") or res.get("terminalValidate"):
+                    self.send_json({
+                        "success": False,
+                        "message": "萤石安全防护：检测到新客户端首次登录，需要短信验证码。请切换至「手机短信验证码登录」标签页获取短信登录！"
+                    })
                     return
 
                 user_data = res.get("userInfos") or res.get("data") or {}
                 session_id = res.get("sessionId") or user_data.get("sessionId") or user_data.get("token")
+                if not session_id:
+                    self.send_json({
+                        "success": False,
+                        "message": "账号密码正确，但萤石要求新设备终端安全验证，请直接使用「手机短信验证码登录」！"
+                    })
+                    return
 
-                # Fetch devices
-                cams = self.fetch_devices(session_id)
+                cams = []
+                try:
+                    cams = self.fetch_devices(session_id)
+                except Exception as ex:
+                    logging.warning("fetch_devices warning: %s", ex)
+
                 saved_data = {
                     "session_id": session_id,
                     "user_id": user_data.get("userId"),
@@ -676,6 +740,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self.update_go2rtc_streams(cams)
                 self.send_json({"success": True, "count": len(cams)})
             except Exception as e:
+                logging.exception("Password login exception: %s", e)
                 self.send_json({"success": False, "message": str(e)})
             return
 
@@ -691,6 +756,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self.update_go2rtc_streams(cams)
                 self.send_json({"success": True, "count": len(cams)})
             except Exception as e:
+                logging.exception("Sync exception: %s", e)
                 self.send_json({"success": False, "message": str(e)})
             return
 
@@ -704,9 +770,49 @@ class GatewayHandler(BaseHTTPRequestHandler):
 
     def fetch_devices(self, session_id):
         headers = build_app_headers(session_id=session_id)
-        url = f"{API_BASE_APP}/v3/userdevices/v2/devices/search"
-        data = get_json_api(url, headers=headers)
-        return data.get("deviceInfos") or []
+        endpoints = [
+            f"{API_BASE_APP}/v3/devices/resources?limit=50&offset=0",
+            f"{API_BASE_APP}/v3/devices/info",
+            f"{API_BASE_APP}/v3/userdevices/user",
+            f"{API_BASE_APP}/v3/userdevices/v2/devices/search",
+        ]
+        devices = []
+        for url in endpoints:
+            try:
+                logging.info("Querying device endpoint: %s", url)
+                data = get_json_api(url, headers=headers)
+                meta = data.get("meta", {})
+                if str(meta.get("code", "200")) in ("200", "0"):
+                    raw_list = (
+                        data.get("resources")
+                        or data.get("deviceInfos")
+                        or data.get("data")
+                        or data.get("devices")
+                        or []
+                    )
+                    if isinstance(raw_list, list) and raw_list:
+                        for item in raw_list:
+                            serial = item.get("deviceSerial") or item.get("subSerial") or item.get("devSerial")
+                            if not serial:
+                                continue
+                            name = item.get("deviceName") or item.get("name") or serial
+                            ch = item.get("channelNo") or item.get("channel") or 1
+                            st = item.get("status") if item.get("status") is not None else item.get("onlineStatus", 1)
+                            enc = item.get("isEncrypt") or item.get("encryptStatus") or 0
+                            devices.append({
+                                "deviceSerial": str(serial).strip().upper(),
+                                "deviceName": str(name).strip(),
+                                "channelNo": int(ch),
+                                "status": int(st),
+                                "isEncrypt": int(enc),
+                            })
+                        if devices:
+                            logging.info("Successfully fetched %d devices from %s", len(devices), url)
+                            break
+            except Exception as e:
+                logging.warning("Query failed on %s: %s", url, e)
+        return devices
+
 
     def update_go2rtc_streams(self, devices):
         lines = [
