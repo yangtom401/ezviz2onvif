@@ -278,6 +278,65 @@ HTML_PAGE = """<!DOCTYPE html>
         .msg-box.success { background: #133a20; border: 1px solid #238636; color: #7ee787; display: block; }
         .msg-box.error { background: #3d1418; border: 1px solid #da3633; color: #ff7b72; display: block; }
         
+        .wall-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 12px;
+            background: #05080e;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            margin-top: 14px;
+        }
+        .wall-cell {
+            position: relative;
+            background: #000;
+            border-radius: 6px;
+            overflow: hidden;
+            aspect-ratio: 16 / 9;
+            border: 1px solid #1a2336;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .wall-cell iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #000;
+        }
+        .cell-tag {
+            position: absolute;
+            top: 6px;
+            left: 8px;
+            background: rgba(0, 0, 0, 0.75);
+            color: #7ee787;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .card-player-box {
+            margin-top: 10px;
+            aspect-ratio: 16 / 9;
+            background: #000;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            display: none;
+        }
+        .card-player-box iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #000;
+        }
+
         .cam-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 16px; }
         .cam-card {
             background: var(--bg-input);
@@ -293,7 +352,7 @@ HTML_PAGE = """<!DOCTYPE html>
         .badge.online { background: #133a20; color: #7ee787; border: 1px solid #238636; }
         .badge.offline { background: #21262d; color: #8b949e; border: 1px solid #30363d; }
         .cam-info { font-size: 0.82rem; color: var(--text-sub); display: flex; flex-direction: column; gap: 4px; }
-        .cam-actions { display: flex; gap: 8px; margin-top: 8px; }
+        .cam-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
         .btn-sm { padding: 6px 12px; font-size: 0.82rem; }
         .guide-box { background: #111a2e; border: 1px solid #1f3766; border-radius: 6px; padding: 16px; font-size: 0.9rem; line-height: 1.6; }
         code { background: #1e2638; padding: 2px 6px; border-radius: 4px; font-family: Consolas, monospace; color: #79c0ff; }
@@ -392,6 +451,40 @@ HTML_PAGE = """<!DOCTYPE html>
                 </div>
             </div>
             <div id="sessionDetails" style="font-size:0.85rem; color:var(--text-sub);"></div>
+        </div>
+
+        <!-- 全部摄像头多画面实时监控墙 -->
+        <div class="card" id="wallCard" style="display:none;">
+            <div class="card-title">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span>📺 全部摄像头同屏实时预览 (监控电视墙)</span>
+                    <span class="badge online" id="wallCountBadge">5 路画面</span>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button class="btn-sm green" onclick="playAllWall()">▶ 全部开启</button>
+                    <button class="btn-sm red" onclick="stopAllWall()">⏸ 全部停止</button>
+                    <button class="btn-sm" onclick="toggleFullScreenWall()">⛶ 网页全屏</button>
+                </div>
+            </div>
+            
+            <div id="openStreamActivationBox" style="background:#161f30; border:1px solid #1f3766; border-radius:6px; padding:12px 16px; margin-bottom:14px; font-size:0.85rem; line-height:1.5;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <span style="font-weight:600; color:#79c0ff;">⚡ 激活 7x24 高清直连视频源 (免验证码/无中继瓶颈)</span>
+                </div>
+                <p style="color:var(--text-sub); margin-bottom:8px;">
+                    在您浏览器第 9 个标签页已打开的「萤石开放平台」控制台直接复制 <strong>AppKey</strong> 与 <strong>AppSecret</strong>，一键把 5 路摄像头的高清实时码流直接接入播放矩阵与 NVR！
+                </p>
+                <div id="activationInputs" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+                    <input type="text" id="actAppKey" placeholder="输入开放平台 AppKey" style="min-width:200px;">
+                    <input type="password" id="actAppSecret" placeholder="输入开放平台 Secret" style="min-width:200px;">
+                    <button class="btn-sm green" onclick="activateOpenStreams()">🚀 立即激活全部高清码流</button>
+                </div>
+                <div id="actMsg" style="font-size:0.85rem; margin-top:6px; display:none;"></div>
+            </div>
+
+            <div class="wall-grid" id="wallGrid">
+                <!-- 动态生成 5 路实时画面 -->
+            </div>
         </div>
 
         <!-- 发现的摄像头列表 -->
@@ -583,11 +676,33 @@ HTML_PAGE = """<!DOCTYPE html>
         function renderCameras(cameras) {
             document.getElementById('camCount').innerText = cameras.length;
             const container = document.getElementById('camList');
+            const wallCard = document.getElementById('wallCard');
+            const wallGrid = document.getElementById('wallGrid');
+            const host = window.location.hostname;
+
             if (!cameras.length) {
                 container.innerHTML = '<div style="color:var(--text-sub); grid-column: 1/-1; text-align:center; padding:20px;">未发现摄像头或尚未登录</div>';
+                wallCard.style.display = 'none';
                 return;
             }
-            const host = window.location.hostname;
+
+            // 渲染全部摄像头多画面实时监控墙
+            wallCard.style.display = 'block';
+            document.getElementById('wallCountBadge').innerText = `${cameras.length} 路在线`;
+            wallGrid.innerHTML = cameras.map(c => {
+                const streamName = `cam_${c.deviceSerial}_ch${c.channelNo || 1}`;
+                return `
+                <div class="wall-cell" id="wall_cell_${streamName}">
+                    <div class="cell-tag">
+                        <span class="dot" style="width:7px; height:7px;"></span>
+                        <span>${c.deviceName || c.deviceSerial} (通道 ${c.channelNo || 1})</span>
+                    </div>
+                    <iframe id="wall_frame_${streamName}" src="http://${host}:1984/stream.html?src=${streamName}&mode=webrtc" allowfullscreen></iframe>
+                </div>
+                `;
+            }).join('');
+
+            // 渲染每个摄像头卡片
             container.innerHTML = cameras.map(c => {
                 const isOnline = (String(c.status) === '1');
                 const streamName = `cam_${c.deviceSerial}_ch${c.channelNo || 1}`;
@@ -603,15 +718,93 @@ HTML_PAGE = """<!DOCTYPE html>
                         <div>视频加密: ${c.isEncrypt === 1 ? '🔒 已加密 (AES-128)' : '🔓 未加密'}</div>
                         <div>RTSP 地址: <code style="word-break:break-all;">${rtspUrl}</code></div>
                     </div>
+                    <div class="card-player-box" id="card_player_${streamName}">
+                        <iframe id="card_frame_${streamName}" src="" allowfullscreen></iframe>
+                    </div>
                     <div class="cam-actions">
+                        <button class="btn-sm green" id="btn_card_${streamName}" onclick="toggleCardPlay('${streamName}')">▶ 预览本路</button>
                         <a href="http://${host}:1984/stream.html?src=${streamName}" target="_blank" style="text-decoration:none;">
-                            <button class="btn-sm green">▶ 网页预览</button>
+                            <button class="btn-sm">新窗口大图</button>
                         </a>
-                        <button class="btn-sm" onclick="navigator.clipboard.writeText('${rtspUrl}'); alert('已复制 RTSP 播放地址');">📋 复制 RTSP</button>
+                        <button class="btn-sm" onclick="navigator.clipboard.writeText('${rtspUrl}'); alert('已复制 RTSP 播放地址: ${rtspUrl}');">📋 复制 RTSP</button>
                     </div>
                 </div>
                 `;
             }).join('');
+        }
+
+        function playAllWall() {
+            const host = window.location.hostname;
+            document.querySelectorAll('[id^="wall_frame_"]').forEach(el => {
+                const sName = el.id.replace('wall_frame_', '');
+                el.src = `http://${host}:1984/stream.html?src=${sName}&mode=webrtc`;
+            });
+        }
+
+        function stopAllWall() {
+            document.querySelectorAll('[id^="wall_frame_"]').forEach(el => {
+                el.src = 'about:blank';
+            });
+        }
+
+        function toggleFullScreenWall() {
+            const el = document.getElementById('wallGrid');
+            if (!document.fullscreenElement) {
+                el.requestFullscreen().catch(err => alert('全屏请求失败: ' + err.message));
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        function toggleCardPlay(streamName) {
+            const host = window.location.hostname;
+            const box = document.getElementById('card_player_' + streamName);
+            const frame = document.getElementById('card_frame_' + streamName);
+            const btn = document.getElementById('btn_card_' + streamName);
+            if (box.style.display === 'none' || !box.style.display) {
+                box.style.display = 'block';
+                frame.src = `http://${host}:1984/stream.html?src=${streamName}&mode=webrtc`;
+                btn.innerText = '⏸ 关闭预览';
+                btn.className = 'btn-sm red';
+            } else {
+                box.style.display = 'none';
+                frame.src = 'about:blank';
+                btn.innerText = '▶ 预览本路';
+                btn.className = 'btn-sm green';
+            }
+        }
+
+        async function activateOpenStreams() {
+            const appKey = document.getElementById('actAppKey').value.trim();
+            const appSecret = document.getElementById('actAppSecret').value.trim();
+            const msgEl = document.getElementById('actMsg');
+            if (!appKey || !appSecret) {
+                msgEl.style.display = 'block';
+                msgEl.style.color = '#ff7b72';
+                msgEl.innerText = '请输入在 open.ys7.com 控制台复制的 AppKey 和 Secret';
+                return;
+            }
+            msgEl.style.display = 'block';
+            msgEl.style.color = '#7ee787';
+            msgEl.innerText = '正在获取官方直连码流并激活播放矩阵...';
+            try {
+                const res = await fetch('/api/activate_open', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ appKey, appSecret })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    msgEl.innerText = '✅ 激活成功！全部 5 路摄像头视频源已绑定并启动，正在加载实时画面...';
+                    setTimeout(() => { playAllWall(); }, 1000);
+                } else {
+                    msgEl.style.color = '#ff7b72';
+                    msgEl.innerText = '激活失败: ' + (data.message || '凭证错误');
+                }
+            } catch (e) {
+                msgEl.style.color = '#ff7b72';
+                msgEl.innerText = '请求异常: ' + e;
+            }
         }
 
         async function syncCameras() {
@@ -936,6 +1129,42 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self.send_json({"success": True, "count": len(cams)})
             except Exception as e:
                 logging.exception("Open platform login exception: %s", e)
+                self.send_json({"success": False, "message": str(e)})
+            return
+
+        if parsed.path == "/api/activate_open":
+            app_key = str(params.get("appKey", "")).strip()
+            app_secret = str(params.get("appSecret", "")).strip()
+            if not app_key or not app_secret:
+                self.send_json({"success": False, "message": "AppKey 或 AppSecret 不能为空"})
+                return
+
+            try:
+                logging.info("Requesting accessToken from open.ys7.com to activate live streams...")
+                token_res = post_json_api(
+                    f"{API_BASE_OPEN}/api/lapp/token/get",
+                    {"appKey": app_key, "appSecret": app_secret}
+                )
+                if str(token_res.get("code")) != "200":
+                    self.send_json({"success": False, "message": token_res.get("msg", "获取 AccessToken 失败")})
+                    return
+                token_data = token_res.get("data") or {}
+                access_token = token_data.get("accessToken")
+                if not access_token:
+                    self.send_json({"success": False, "message": "返回的 AccessToken 为空"})
+                    return
+
+                saved = load_saved_token() or {}
+                saved["access_token"] = access_token
+                saved["app_key"] = app_key
+                saved["app_secret"] = app_secret
+                devices = saved.get("devices") or []
+                self.update_go2rtc_streams(devices, access_token=access_token)
+                save_token_data(saved)
+                logging.info("Successfully activated live streams for %d devices with open platform token!", len(devices))
+                self.send_json({"success": True, "count": len(devices)})
+            except Exception as e:
+                logging.exception("activate_open exception: %s", e)
                 self.send_json({"success": False, "message": str(e)})
             return
 
